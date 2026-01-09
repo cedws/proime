@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- App Identity -->
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+
+    <key>CFBundleExecutable</key>
+    <string>CustomTextTransformer</string>
+
+    <key>CFBundleIdentifier</key>
+    <string>xyz.cedwards.inputmethod.CustomTextTransformer</string>
+
+    <key>CFBundleName</key>
+    <string>CustomTextTransformer</string>
+
+    <key>CFBundleDisplayName</key>
+    <string>Text Transformer</string>
+
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+
+    <key>CFBundleVersion</key>
+    <string>1</string>
+
+    <key>LSMinimumSystemVersion</key>
+    <string>11.0</string>
+
+    <!-- CRITICAL: Input Method Configuration -->
+
+    <!-- This tells macOS this is an Input Method -->
+    <key>LSUIElement</key>
+    <true />
+
+    <!-- Input Method Connection Name - must match the one in IMEController.swift -->
+    <key>InputMethodConnectionName</key>
+    <string>xyz.cedwards.inputmethod.CustomTextTransformer_Connection</string>
+
+    <!-- Input Method Server Control Object -->
+    <!-- This is the principal class that manages the IME -->
+    <!-- For Swift, must include module name prefix -->
+    <key>InputMethodServerControllerClass</key>
+    <string>CustomTextTransformer.InputController</string>
+
+    <!-- Component Data for Input Source Registration -->
+    <key>ComponentInputModeDict</key>
+    <dict>
+        <!-- Visible name in the input menu -->
+        <key>tsInputModeListKey</key>
+        <dict>
+            <key>xyz.cedwards.inputmethod.CustomTextTransformer.Roman</key>
+            <dict>
+                <!-- CRITICAL: This is required for macOS to recognize the input mode -->
+                <key>TISInputSourceID</key>
+                <string
+                    >xyz.cedwards.inputmethod.CustomTextTransformer.Roman</string>
+
+                <!-- CRITICAL: Language code - required for proper categorization -->
+                <key>TISIntendedLanguage</key>
+                <string>en</string>
+
+                <key>tsInputModeAlternateMenuIconFileKey</key>
+                <string>icon.tiff</string>
+
+                <key>tsInputModeDefaultKey</key>
+                <false />
+
+                <key>tsInputModeMenuIconFileKey</key>
+                <string>icon.tiff</string>
+
+                <!-- Display name in the input method menu -->
+                <key>tsInputModeTitleKey</key>
+                <string>Text Transformer</string>
+
+                <!-- Keyboard layout - usually uses US layout as base -->
+                <key>tsInputModeKeyEquivalentKey</key>
+                <string />
+
+                <!-- Script/Language code -->
+                <key>tsInputModeScriptKey</key>
+                <string>smRoman</string>
+            </dict>
+        </dict>
+    </dict>
+
+    <!-- Allowed client applications (empty = all apps) -->
+    <key>tsInputMethodCharacterRepertoireKey</key>
+    <array>
+        <string>Latn</string>
+    </array>
+
+    <!-- Additional Input Method Settings -->
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+
+    <!-- Sandboxing: Input Methods typically need to be unsandboxed -->
+    <!-- or have specific entitlements to work across all apps -->
+    <key>NSSupportsAutomaticTermination</key>
+    <false />
+
+    <key>NSSupportsSuddenTermination</key>
+    <false />
+</dict>
+</plist>
