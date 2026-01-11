@@ -8,16 +8,16 @@
     <string>en</string>
 
     <key>CFBundleExecutable</key>
-    <string>CustomTextTransformer</string>
+    <string>ProIME</string>
 
     <key>CFBundleIdentifier</key>
-    <string>xyz.cedwards.inputmethod.CustomTextTransformer</string>
+    <string>xyz.cedwards.inputmethod.ProIME</string>
 
     <key>CFBundleName</key>
-    <string>CustomTextTransformer</string>
+    <string>ProIME</string>
 
     <key>CFBundleDisplayName</key>
-    <string>Text Transformer</string>
+    <string>ProIME</string>
 
     <key>CFBundlePackageType</key>
     <string>APPL</string>
@@ -29,7 +29,7 @@
     <string>1</string>
 
     <key>LSMinimumSystemVersion</key>
-    <string>11.0</string>
+    <string>12.0</string>
 
     <!-- CRITICAL: Input Method Configuration -->
 
@@ -39,13 +39,13 @@
 
     <!-- Input Method Connection Name - must match the one in IMEController.swift -->
     <key>InputMethodConnectionName</key>
-    <string>xyz.cedwards.inputmethod.CustomTextTransformer_Connection</string>
+    <string>xyz.cedwards.inputmethod.ProIME_Connection</string>
 
     <!-- Input Method Server Control Object -->
-    <!-- This is the principal class that manages the IME -->
+    <!-- This is the class that handles individual input sessions -->
     <!-- For Swift, must include module name prefix -->
     <key>InputMethodServerControllerClass</key>
-    <string>CustomTextTransformer.InputController</string>
+    <string>ProIME.InputController</string>
 
     <!-- Component Data for Input Source Registration -->
     <key>ComponentInputModeDict</key>
@@ -53,12 +53,11 @@
         <!-- Visible name in the input menu -->
         <key>tsInputModeListKey</key>
         <dict>
-            <key>xyz.cedwards.inputmethod.CustomTextTransformer.Roman</key>
+            <key>xyz.cedwards.inputmethod.ProIME.Roman</key>
             <dict>
                 <!-- CRITICAL: This is required for macOS to recognize the input mode -->
                 <key>TISInputSourceID</key>
-                <string
-                    >xyz.cedwards.inputmethod.CustomTextTransformer.Roman</string>
+                <string>xyz.cedwards.inputmethod.ProIME.Roman</string>
 
                 <!-- CRITICAL: Language code - required for proper categorization -->
                 <key>TISIntendedLanguage</key>
@@ -75,7 +74,7 @@
 
                 <!-- Display name in the input method menu -->
                 <key>tsInputModeTitleKey</key>
-                <string>Text Transformer</string>
+                <string>ProIME</string>
 
                 <!-- Keyboard layout - usually uses US layout as base -->
                 <key>tsInputModeKeyEquivalentKey</key>

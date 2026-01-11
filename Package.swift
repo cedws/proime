@@ -4,19 +4,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "CustomTextTransformer",
+    name: "ProIME",
     platforms: [
-        .macOS(.v11)
+        .macOS(.v12)
     ],
     products: [
         .executable(
-            name: "CustomTextTransformer",
-            targets: ["CustomTextTransformer"]
+            name: "ProIME",
+            targets: ["ProIME"]
         )
     ],
     targets: [
         .executableTarget(
-            name: "CustomTextTransformer",
+            name: "ProIME",
             path: "Sources",
             resources: [
                 .copy("../Resources/Info.plist"),

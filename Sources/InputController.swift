@@ -1,226 +1,209 @@
 import Cocoa
 import InputMethodKit
 
+/// Key code constants for special keys
+private enum KeyCode {
+    static let returnKey: UInt16 = 36
+    static let backspace: UInt16 = 51
+    static let escape: UInt16 = 53
+}
+
+/// Error message display configuration
+private enum ErrorDisplayConfig {
+    static let minimumDisplayTime: TimeInterval = 3.0
+    static let charactersPerSecond: Double = 20.0
+}
+
 /// The main input controller that handles keystroke events
-/// This is where text transformation happens
 @objc(InputController)
 class InputController: IMKInputController {
-
-    // Buffer to accumulate characters before committing
     private var composedBuffer = ""
-
-    // MARK: - Initialization
-
-    /// Required initializer for IMKInputController
-    /// This is called by IMKServer when creating controller instances
-    override init!(server: IMKServer!, delegate: Any!, client inputClient: Any!) {
-        super.init(server: server, delegate: delegate, client: inputClient)
-        NSLog("InputController initialized for client")
-    }
+    private var isStreaming = false
+    private var llmResponse = ""
 
     // MARK: - Text Input Handling
 
-    /// Called when the user types a character
-    /// Return true if we handle the event, false to pass through
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
-        guard let event = event else { return false }
-
-        // Only handle key down events
-        guard event.type == .keyDown else { return false }
+        guard let event = event, event.type == .keyDown else { return false }
 
         let keyCode = event.keyCode
-        let characters = event.characters ?? ""
 
-        NSLog("Key pressed: \(characters) (code: \(keyCode))")
+        // Pass through Cmd shortcuts
+        if event.modifierFlags.contains(.command) { return false }
 
         // Handle special keys
         switch keyCode {
-        case 36:  // Return/Enter
-            commitComposition(sender)
+        case KeyCode.returnKey:
+            guard !isStreaming, !composedBuffer.isEmpty else { return isStreaming }
+            startLLMTransformation(sender)
             return true
 
-        case 51:  // Delete/Backspace
+        case KeyCode.backspace:
+            guard !composedBuffer.isEmpty, !isStreaming else { return false }
             handleBackspace(sender)
             return true
 
-        case 53:  // Escape
-            cancelComposition(sender)
-            return true
+        case KeyCode.escape:
+            if isStreaming {
+                cancelStreaming(sender)
+                return true
+            } else if !composedBuffer.isEmpty {
+                clearMarkedText(sender)
+                composedBuffer = ""
+                return true
+            }
+            return false
 
         default:
-            break
-        }
-
-        // Handle regular character input
-        if !characters.isEmpty {
-            return handleCharacterInput(characters, client: sender)
-        }
-
-        return false
-    }
-
-    /// Transform and handle character input
-    private func handleCharacterInput(_ characters: String, client sender: Any!) -> Bool {
-        // Add to our buffer
-        composedBuffer += characters
-
-        // Apply transformation
-        let transformed = transformText(composedBuffer)
-
-        // Update the marked text (underlined text showing transformation)
-        updateMarkedText(transformed, client: sender)
-
-        return true
-    }
-
-    /// This is where you define your text transformation logic
-    /// Examples: ROT13, leetspeak, case changes, emoji replacement, etc.
-    private func transformText(_ input: String) -> String {
-        // Example 1: Convert to uppercase
-        // return input.uppercased()
-
-        // Example 2: ROT13 cipher
-        // return rot13(input)
-
-        // Example 3: Leetspeak transformation
-        return applyLeetspeak(input)
-
-        // Example 4: Simple character substitution
-        // return input.replacingOccurrences(of: "a", with: "@")
-        //            .replacingOccurrences(of: "e", with: "3")
-    }
-
-    /// Example transformation: Leetspeak
-    private func applyLeetspeak(_ text: String) -> String {
-        let substitutions: [Character: String] = [
-            "a": "4", "A": "4",
-            "e": "3", "E": "3",
-            "i": "1", "I": "1",
-            "o": "0", "O": "0",
-            "s": "5", "S": "5",
-            "t": "7", "T": "7",
-            "l": "1", "L": "1",
-        ]
-
-        return text.map { char in
-            substitutions[char] ?? String(char)
-        }.joined()
-    }
-
-    /// Example transformation: ROT13
-    private func rot13(_ text: String) -> String {
-        return text.map { char in
-            if let scalar = char.unicodeScalars.first {
-                let value = scalar.value
-                switch value {
-                case 65...90:  // A-Z
-                    return Character(UnicodeScalar((value - 65 + 13) % 26 + 65)!)
-                case 97...122:  // a-z
-                    return Character(UnicodeScalar((value - 97 + 13) % 26 + 97)!)
-                default:
-                    return char
-                }
+            guard !isStreaming, let characters = event.characters, !characters.isEmpty else {
+                return isStreaming
             }
-            return char
-        }.map(String.init).joined()
+            composedBuffer += characters
+            updateMarkedText(composedBuffer, client: sender)
+            return true
+        }
     }
 
-    // MARK: - Composition Management
+    // MARK: - LLM Streaming
 
-    /// Update the marked (underlined) text shown to user
-    private func updateMarkedText(_ text: String, client sender: Any!) {
+    private func startLLMTransformation(_ sender: Any!) {
+        guard SettingsManager.shared.isConfigured else {
+            showError("⚠️ Please configure OpenRouter API key in Settings", sender)
+            return
+        }
+
+        // Capture client reference to prevent deallocation during streaming
         guard let client = sender as? IMKTextInput else { return }
 
-        // Create attributed string for the marked text
-        let attributes: [NSAttributedString.Key: Any] = [
-            .underlineStyle: NSUnderlineStyle.single.rawValue
-        ]
-        let markedText = NSAttributedString(string: text, attributes: attributes)
+        let inputText = composedBuffer
+        isStreaming = true
+        llmResponse = ""
 
-        // Set the marked text in the client application
+        var firstTokenReceived = false
+
+        OpenRouterClient.shared.streamCompletion(
+            prompt: inputText,
+            onToken: { [weak self] token in
+                guard let self = self else { return }
+
+                if !firstTokenReceived {
+                    firstTokenReceived = true
+                    self.composedBuffer = ""
+                }
+
+                self.llmResponse += token
+                self.updateMarkedText(self.llmResponse, client: client)
+            },
+            onComplete: { [weak self] fullText in
+                guard let self = self else { return }
+                client.insertText(
+                    fullText, replacementRange: NSRange(location: NSNotFound, length: NSNotFound))
+                self.resetState()
+            },
+            onError: { [weak self] error in
+                guard let self = self else { return }
+                self.showError("Error: \(error.localizedDescription)", client)
+            }
+        )
+    }
+
+    private func cancelStreaming(_ sender: Any!) {
+        clearMarkedText(sender)
+        resetState()
+    }
+
+    private func showError(_ message: String, _ sender: Any!) {
+        updateMarkedText(message, client: sender)
+
+        // Calculate display duration based on message length
+        let displayDuration = max(
+            ErrorDisplayConfig.minimumDisplayTime,
+            Double(message.count) / ErrorDisplayConfig.charactersPerSecond
+        )
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + displayDuration) { [weak self] in
+            self?.clearMarkedText(sender)
+            self?.resetState()
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func updateMarkedText(_ text: String, client sender: Any!) {
+        guard let client = sender as? IMKTextInput, !text.isEmpty else { return }
+
+        let markedText = NSAttributedString(
+            string: text,
+            attributes: [.underlineStyle: NSUnderlineStyle.single.rawValue]
+        )
+
         client.setMarkedText(
             markedText,
             selectionRange: NSRange(location: text.count, length: 0),
-            replacementRange: NSRange(location: NSNotFound, length: NSNotFound))
+            replacementRange: NSRange(location: NSNotFound, length: NSNotFound)
+        )
     }
 
-    /// Commit the transformed text to the application
-    override func commitComposition(_ sender: Any!) {
+    private func clearMarkedText(_ sender: Any!) {
         guard let client = sender as? IMKTextInput else { return }
-
-        if !composedBuffer.isEmpty {
-            let transformed = transformText(composedBuffer)
-
-            // Insert the transformed text
-            client.insertText(
-                transformed,
-                replacementRange: NSRange(location: NSNotFound, length: NSNotFound))
-
-            NSLog("Committed: '\(composedBuffer)' -> '\(transformed)'")
-
-            // Clear the buffer
-            composedBuffer = ""
-        }
-    }
-
-    /// Handle backspace key
-    private func handleBackspace(_ sender: Any!) {
-        guard let client = sender as? IMKTextInput else { return }
-
-        if !composedBuffer.isEmpty {
-            composedBuffer.removeLast()
-
-            if composedBuffer.isEmpty {
-                // Cancel composition if buffer is empty
-                client.setMarkedText(
-                    "",
-                    selectionRange: NSRange(location: 0, length: 0),
-                    replacementRange: NSRange(location: NSNotFound, length: NSNotFound))
-            } else {
-                // Update with remaining text
-                let transformed = transformText(composedBuffer)
-                updateMarkedText(transformed, client: sender)
-            }
-        }
-    }
-
-    /// Cancel the current composition
-    private func cancelComposition(_ sender: Any!) {
-        guard let client = sender as? IMKTextInput else { return }
-
-        composedBuffer = ""
         client.setMarkedText(
             "",
             selectionRange: NSRange(location: 0, length: 0),
-            replacementRange: NSRange(location: NSNotFound, length: NSNotFound))
+            replacementRange: NSRange(location: NSNotFound, length: NSNotFound)
+        )
+    }
+
+    private func handleBackspace(_ sender: Any!) {
+        composedBuffer.removeLast()
+        if composedBuffer.isEmpty {
+            clearMarkedText(sender)
+        } else {
+            updateMarkedText(composedBuffer, client: sender)
+        }
+    }
+
+    private func resetState() {
+        composedBuffer = ""
+        llmResponse = ""
+        isStreaming = false
     }
 
     // MARK: - IMKInputController Overrides
 
-    /// Called when input method is activated
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
-        NSLog("IME activated")
-        composedBuffer = ""
+        resetState()
     }
 
-    /// Called when input method is deactivated
     override func deactivateServer(_ sender: Any!) {
-        commitComposition(sender)
         super.deactivateServer(sender)
-        NSLog("IME deactivated")
     }
 
-    /// Provide the menu for input method selection
     override func menu() -> NSMenu! {
-        let menu = NSMenu(title: "Custom Text Transformer")
+        let menu = NSMenu(title: "ProIME")
 
-        let item = NSMenuItem(
-            title: "Text Transformer IME",
+        let settingsItem = NSMenuItem(
+            title: "Settings...",
+            action: #selector(openSettings),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let statusItem = NSMenuItem(
+            title: SettingsManager.shared.isConfigured ? "✓ Configured" : "⚠️ Not Configured",
             action: nil,
-            keyEquivalent: "")
-        menu.addItem(item)
+            keyEquivalent: ""
+        )
+        statusItem.isEnabled = false
+        menu.addItem(statusItem)
 
         return menu
+    }
+
+    @objc private func openSettings() {
+        SettingsWindowController.shared.show()
     }
 }

@@ -1,4 +1,4 @@
-# Custom macOS Input Method (IME) - Text Transformer
+# ProIME - Professional macOS Input Method
 
 A macOS Input Method that globally transforms text as users type across all applications.
 
@@ -132,7 +132,7 @@ This will:
 ### Manual Installation
 
 1. Build the app: `make`
-2. Copy `build/CustomTextTransformer.app` to:
+2. Copy `build/ProIME.app` to:
    - `~/Library/Input Methods/` (current user only)
    - `/Library/Input Methods/` (system-wide, requires admin)
 
@@ -142,7 +142,7 @@ This will:
 
 1. Go to **System Settings** → **Keyboard** → **Input Sources**
 2. Click the **+** button
-3. Find "Text Transformer" in the list
+3. Find "ProIME" in the list
 4. Add it
 5. Switch to it using the input menu in the menu bar or press Fn/Globe key
 

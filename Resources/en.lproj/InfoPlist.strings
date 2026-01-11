@@ -1,4 +1,7 @@
 /* Localized versions of Info.plist keys */
 
 /* Display name for the input method - this is the key that matches TISInputSourceID */
-"xyz.cedwards.inputmethod.CustomTextTransformer.Roman" = "Text Transformer";
+"xyz.cedwards.inputmethod.ProIME.Roman" = "ProIME";
+
+/* Bundle name */
+"CFBundleName" = "ProIME";
