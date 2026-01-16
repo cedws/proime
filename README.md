@@ -2,7 +2,7 @@
 
 macOS Input Method that uses AI to transform your text as you type. Works in any app.
 
-https://github.com/cedws/proime/raw/master/demo.mp4
+https://github.com/user-attachments/assets/9e7e3932-b024-47d7-bdaa-e4f775bbb63a
 
 ## What It Does
 
