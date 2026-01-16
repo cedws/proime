@@ -2,6 +2,8 @@
 
 macOS Input Method that uses AI to transform your text as you type. Works in any app.
 
+https://github.com/cedws/proime/raw/master/demo.mp4
+
 ## What It Does
 
 Type text → Press Enter → AI rewrites it → Text gets inserted
