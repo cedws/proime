@@ -10,20 +10,31 @@ Uses OpenRouter API for LLM access.
 
 ## Installation
 
-```bash
-# Install just if you don't have it
-brew install just
+### From Release (Recommended)
 
-# Build and install
+1. Download the latest `.zip` from the [Releases](https://github.com/cedws/proime/releases) page
+2. Double-click the zip to extract `ProIME.app`
+3. Double-click `ProIME.app` — macOS will block it
+4. Go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**
+5. Copy `ProIME.app` to the Input Methods directory:
+   ```bash
+   cp -r ProIME.app ~/Library/Input\ Methods/
+   ```
+6. Log out and log back in
+7. Go to **System Settings → Keyboard → Input Sources → Edit**, click **+**, and add **ProIME**
+8. Press the **Fn** key to switch to ProIME — a pen icon will appear in the menu bar
+
+### From Source
+
+```bash
 just install
 ```
 
 ## Setup
 
-1. Get API key from [openrouter.ai/keys](https://openrouter.ai/keys)
-2. System Settings → Keyboard → Input Sources → Add "ProIME"
-3. Click pencil icon in menu bar → Settings
-4. Paste API key → Save
+1. Get an API key from [OpenRouter](https://openrouter.ai/keys) or [GitHub Models](https://github.com/marketplace/models)
+2. Click the pen icon in the menu bar → **Settings**
+3. Paste your API key → **Save**
 
 ## Usage
 
