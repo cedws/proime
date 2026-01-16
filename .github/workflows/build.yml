@@ -1,0 +1,104 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+    name: Build Universal Binary
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build for arm64
+        run: swift build -c release -Xswiftc -suppress-warnings --arch arm64
+
+      - name: Build for x86_64
+        run: swift build -c release -Xswiftc -suppress-warnings --arch x86_64
+
+      - name: Create app bundle
+        run: |
+          APP_NAME="ProIME"
+          BUILD_DIR="build"
+
+          # Create app bundle structure
+          rm -rf "${BUILD_DIR}/${APP_NAME}.app"
+          mkdir -p "${BUILD_DIR}/${APP_NAME}.app/Contents/MacOS"
+          mkdir -p "${BUILD_DIR}/${APP_NAME}.app/Contents/Resources"
+
+          # Create universal binary
+          lipo -create \
+            .build/arm64-apple-macosx/release/${APP_NAME} \
+            .build/x86_64-apple-macosx/release/${APP_NAME} \
+            -output "${BUILD_DIR}/${APP_NAME}.app/Contents/MacOS/${APP_NAME}"
+
+          # Copy resources
+          cp Resources/Info.plist "${BUILD_DIR}/${APP_NAME}.app/Contents/Info.plist"
+          cp Resources/icon.tiff "${BUILD_DIR}/${APP_NAME}.app/Contents/Resources/icon.tiff"
+          cp -r Resources/en.lproj "${BUILD_DIR}/${APP_NAME}.app/Contents/Resources/en.lproj"
+
+          # Create PkgInfo
+          echo "APPL????" > "${BUILD_DIR}/${APP_NAME}.app/Contents/PkgInfo"
+
+          # Code sign (ad-hoc for CI)
+          codesign --force --deep --sign - "${BUILD_DIR}/${APP_NAME}.app"
+
+          # Verify universal binary
+          file "${BUILD_DIR}/${APP_NAME}.app/Contents/MacOS/${APP_NAME}"
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION="${GITHUB_SHA::7}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create ZIP archive
+        run: |
+          cd build
+          zip -r "ProIME-${{ steps.version.outputs.version }}.zip" ProIME.app
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProIME-${{ steps.version.outputs.version }}
+          path: build/ProIME-${{ steps.version.outputs.version }}.zip
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: macos-15
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ProIME-${{ steps.version.outputs.version }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ProIME-${{ steps.version.outputs.version }}.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-') }}
