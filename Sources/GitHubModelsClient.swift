@@ -1,17 +1,17 @@
 import Foundation
 
-/// Network configuration constants
-private enum NetworkConfig {
+/// Network configuration constants for GitHub Models
+private enum GitHubNetworkConfig {
     static let requestTimeout: TimeInterval = 10
     static let resourceTimeout: TimeInterval = 60
     static let prewarmTimeout: TimeInterval = 5
 }
 
-/// Client for OpenRouter API with streaming support
-class OpenRouterClient: LLMProvider {
-    static let shared = OpenRouterClient()
+/// Client for GitHub Models API with streaming support
+class GitHubModelsClient: LLMProvider {
+    static let shared = GitHubModelsClient()
 
-    private let baseURL = "https://openrouter.ai/api/v1"
+    private let baseURL = "https://models.github.ai/inference"
 
     // Pre-warmed connection flag with thread-safe access
     private let connectionPrewarmLock = NSLock()
@@ -23,8 +23,8 @@ class OpenRouterClient: LLMProvider {
 
         // Network performance optimizations
         config.httpMaximumConnectionsPerHost = 1
-        config.timeoutIntervalForRequest = NetworkConfig.requestTimeout
-        config.timeoutIntervalForResource = NetworkConfig.resourceTimeout
+        config.timeoutIntervalForRequest = GitHubNetworkConfig.requestTimeout
+        config.timeoutIntervalForResource = GitHubNetworkConfig.resourceTimeout
 
         // Enable HTTP/2 and connection reuse
         config.httpShouldUsePipelining = true
@@ -37,7 +37,7 @@ class OpenRouterClient: LLMProvider {
         return URLSession(configuration: config)
     }()
 
-    /// Pre-warm the connection to OpenRouter for faster first request
+    /// Pre-warm the connection to GitHub Models for faster first request
     func prewarmConnection() {
         connectionPrewarmLock.lock()
         defer { connectionPrewarmLock.unlock() }
@@ -50,16 +50,20 @@ class OpenRouterClient: LLMProvider {
 
             // Make a lightweight GET request to establish connection
             var request = URLRequest(url: url)
-            request.httpMethod = "HEAD"  // Just headers, no body
-            request.timeoutInterval = NetworkConfig.prewarmTimeout
+            request.httpMethod = "HEAD"
+            request.timeoutInterval = GitHubNetworkConfig.prewarmTimeout
 
-            NSLog("OpenRouter: Pre-warming connection...")
+            if let token = SettingsManager.shared.githubToken, !token.isEmpty {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+
+            NSLog("GitHubModels: Pre-warming connection...")
             _ = try? await urlSession.data(for: request)
-            NSLog("OpenRouter: Connection pre-warmed")
+            NSLog("GitHubModels: Connection pre-warmed")
         }
     }
 
-    /// Stream completion from OpenRouter
+    /// Stream completion from GitHub Models
     /// - Parameters:
     ///   - prompt: User's input text
     ///   - onToken: Callback for each token received
@@ -73,15 +77,15 @@ class OpenRouterClient: LLMProvider {
     ) {
         let settings = SettingsManager.shared
 
-        guard let apiKey = settings.openRouterAPIKey, !apiKey.isEmpty else {
-            onError(OpenRouterError.missingAPIKey)
+        guard let token = settings.githubToken, !token.isEmpty else {
+            onError(GitHubModelsError.missingToken)
             return
         }
 
         Task {
             do {
                 try await performStreamingRequest(
-                    apiKey: apiKey,
+                    token: token,
                     model: settings.selectedModel,
                     systemPrompt: settings.systemPrompt,
                     userPrompt: prompt,
@@ -97,7 +101,7 @@ class OpenRouterClient: LLMProvider {
     }
 
     private func performStreamingRequest(
-        apiKey: String,
+        token: String,
         model: String,
         systemPrompt: String,
         userPrompt: String,
@@ -107,10 +111,10 @@ class OpenRouterClient: LLMProvider {
         onError: @escaping (Error) -> Void
     ) async throws {
         guard let url = URL(string: "\(baseURL)/chat/completions") else {
-            throw OpenRouterError.invalidURL
+            throw GitHubModelsError.invalidURL
         }
 
-        // Build request body
+        // Build request body (OpenAI-compatible format)
         let requestBody: [String: Any] = [
             "model": model,
             "messages": [
@@ -122,31 +126,30 @@ class OpenRouterClient: LLMProvider {
         ]
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: requestBody) else {
-            throw OpenRouterError.invalidRequest
+            throw GitHubModelsError.invalidRequest
         }
 
         // Create request
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("ProIME", forHTTPHeaderField: "X-Title")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.httpBody = jsonData
 
         // Perform streaming request using shared session for connection pooling
-        NSLog("OpenRouter: Starting request...")
+        NSLog("GitHubModels: Starting request...")
         let requestStart = Date()
         let (bytes, response) = try await urlSession.bytes(for: request)
         let connectionTime = Date().timeIntervalSince(requestStart)
-        NSLog("OpenRouter: Connection established in \(String(format: "%.3f", connectionTime))s")
+        NSLog("GitHubModels: Connection established in \(String(format: "%.3f", connectionTime))s")
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw OpenRouterError.invalidResponse
+            throw GitHubModelsError.invalidResponse
         }
 
         guard httpResponse.statusCode == 200 else {
-            NSLog("OpenRouter: HTTP error \(httpResponse.statusCode)")
-            throw OpenRouterError.httpError(statusCode: httpResponse.statusCode)
+            NSLog("GitHubModels: HTTP error \(httpResponse.statusCode)")
+            throw GitHubModelsError.httpError(statusCode: httpResponse.statusCode)
         }
 
         var fullText = ""
@@ -155,7 +158,7 @@ class OpenRouterClient: LLMProvider {
 
         // Process SSE stream
         for try await line in bytes.lines {
-            NSLog("OpenRouter: Received line: \(line)")
+            NSLog("GitHubModels: Received line: \(line)")
 
             // SSE format: "data: {...}"
             if line.hasPrefix("data: ") {
@@ -164,7 +167,7 @@ class OpenRouterClient: LLMProvider {
                 // Check for stream end
                 if jsonString == "[DONE]" {
                     NSLog(
-                        "OpenRouter: Stream completed with \(tokenCount) tokens in \(String(format: "%.3f", Date().timeIntervalSince(streamStart)))s"
+                        "GitHubModels: Stream completed with \(tokenCount) tokens in \(String(format: "%.3f", Date().timeIntervalSince(streamStart)))s"
                     )
                     break
                 }
@@ -179,7 +182,7 @@ class OpenRouterClient: LLMProvider {
                 {
                     // Only process non-empty content
                     guard !content.isEmpty else {
-                        NSLog("OpenRouter: Skipping empty content chunk")
+                        NSLog("GitHubModels: Skipping empty content chunk")
                         continue
                     }
 
@@ -187,7 +190,7 @@ class OpenRouterClient: LLMProvider {
                     if tokenCount == 1 {
                         let firstTokenTime = Date().timeIntervalSince(streamStart)
                         NSLog(
-                            "OpenRouter: First token received in \(String(format: "%.3f", firstTokenTime))s"
+                            "GitHubModels: First token received in \(String(format: "%.3f", firstTokenTime))s"
                         )
                     }
 
@@ -198,7 +201,7 @@ class OpenRouterClient: LLMProvider {
                         onToken(content)
                     }
                 } else {
-                    NSLog("OpenRouter: Failed to parse JSON or no content in delta")
+                    NSLog("GitHubModels: Failed to parse JSON or no content in delta")
                 }
             }
         }
@@ -210,9 +213,9 @@ class OpenRouterClient: LLMProvider {
     }
 }
 
-/// Errors specific to OpenRouter API
-enum OpenRouterError: LocalizedError {
-    case missingAPIKey
+/// Errors specific to GitHub Models API
+enum GitHubModelsError: LocalizedError {
+    case missingToken
     case invalidURL
     case invalidRequest
     case invalidResponse
@@ -220,8 +223,8 @@ enum OpenRouterError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingAPIKey:
-            return "OpenRouter API key not configured. Please open Settings."
+        case .missingToken:
+            return "GitHub token not configured. Please open Settings."
         case .invalidURL:
             return "Invalid API URL"
         case .invalidRequest:

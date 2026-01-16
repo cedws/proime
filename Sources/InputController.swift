@@ -68,7 +68,8 @@ class InputController: IMKInputController {
 
     private func startLLMTransformation(_ sender: Any!) {
         guard SettingsManager.shared.isConfigured else {
-            showError("⚠️ Please configure OpenRouter API key in Settings", sender)
+            let provider = SettingsManager.shared.selectedProvider.displayName
+            showError("⚠️ Please configure \(provider) credentials in Settings", sender)
             return
         }
 
@@ -81,7 +82,7 @@ class InputController: IMKInputController {
 
         var firstTokenReceived = false
 
-        OpenRouterClient.shared.streamCompletion(
+        LLMProviderFactory.current.streamCompletion(
             prompt: inputText,
             onToken: { [weak self] token in
                 guard let self = self else { return }
@@ -176,6 +177,11 @@ class InputController: IMKInputController {
     }
 
     override func deactivateServer(_ sender: Any!) {
+        // Clear any marked text to prevent blocking mouse events
+        if !composedBuffer.isEmpty || isStreaming {
+            clearMarkedText(sender)
+        }
+        resetState()
         super.deactivateServer(sender)
     }
 

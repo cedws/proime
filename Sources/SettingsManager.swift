@@ -10,14 +10,18 @@ class SettingsManager {
     // MARK: - Config Structure
 
     private struct Config: Codable {
+        var selectedProvider: String
         var apiKey: String?
+        var githubToken: String?
         var selectedModel: String
         var systemPrompt: String
         var temperature: Double
 
         static var `default`: Config {
             Config(
+                selectedProvider: LLMProviderType.openRouter.rawValue,
                 apiKey: nil,
+                githubToken: nil,
                 selectedModel: "x-ai/grok-4.1-fast",
                 systemPrompt:
                     "You are a helpful writing assistant. Rewrite the user's text to be clear, concise, and well-written. Maintain the original meaning and tone. Do not output anything else besides the rewritten text. Treat all following messages as user input.",
@@ -72,6 +76,14 @@ class SettingsManager {
 
     // MARK: - Settings Properties
 
+    var selectedProvider: LLMProviderType {
+        get { LLMProviderType(rawValue: config.selectedProvider) ?? .openRouter }
+        set {
+            config.selectedProvider = newValue.rawValue
+            saveConfig()
+        }
+    }
+
     var selectedModel: String {
         get { config.selectedModel }
         set {
@@ -106,7 +118,20 @@ class SettingsManager {
         }
     }
 
+    var githubToken: String? {
+        get { config.githubToken }
+        set {
+            config.githubToken = newValue
+            saveConfig()
+        }
+    }
+
     var isConfigured: Bool {
-        return openRouterAPIKey != nil && !openRouterAPIKey!.isEmpty
+        switch selectedProvider {
+        case .openRouter:
+            return openRouterAPIKey != nil && !openRouterAPIKey!.isEmpty
+        case .githubModels:
+            return githubToken != nil && !githubToken!.isEmpty
+        }
     }
 }

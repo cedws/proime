@@ -16,7 +16,9 @@ struct ModelsResponse: Codable {
 
 /// SwiftUI view for settings configuration
 struct SettingsView: View {
-    @State private var apiKey: String = ""
+    @State private var selectedProvider: LLMProviderType = .openRouter
+    @State private var openRouterAPIKey: String = ""
+    @State private var githubToken: String = ""
     @State private var selectedModel: String = ""
     @State private var customModel: String = ""
     @State private var systemPrompt: String = ""
@@ -44,31 +46,76 @@ struct SettingsView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    // API Key Section
-                    GroupBox(label: Label("OpenRouter API Key", systemImage: "key.fill")) {
+                    // Provider Selection
+                    GroupBox(label: Label("LLM Provider", systemImage: "cloud.fill")) {
                         VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                if showingAPIKey {
-                                    TextField("sk-or-v1-...", text: $apiKey)
-                                        .textFieldStyle(.roundedBorder)
-                                } else {
-                                    SecureField("sk-or-v1-...", text: $apiKey)
-                                        .textFieldStyle(.roundedBorder)
+                            Picker("Provider", selection: $selectedProvider) {
+                                ForEach(LLMProviderType.allCases, id: \.self) { provider in
+                                    Text(provider.displayName).tag(provider)
                                 }
-
-                                Button(action: { showingAPIKey.toggle() }) {
-                                    Image(systemName: showingAPIKey ? "eye.slash.fill" : "eye.fill")
-                                }
-                                .buttonStyle(.plain)
                             }
+                            .pickerStyle(.segmented)
 
-                            Text(
-                                "Get your API key from [openrouter.ai](https://openrouter.ai/keys)"
-                            )
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            Text("Choose your preferred LLM provider")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
                         .padding(8)
+                    }
+
+                    // API Key Section - conditional based on provider
+                    if selectedProvider == .openRouter {
+                        GroupBox(label: Label("OpenRouter API Key", systemImage: "key.fill")) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    if showingAPIKey {
+                                        TextField("sk-or-v1-...", text: $openRouterAPIKey)
+                                            .textFieldStyle(.roundedBorder)
+                                    } else {
+                                        SecureField("sk-or-v1-...", text: $openRouterAPIKey)
+                                            .textFieldStyle(.roundedBorder)
+                                    }
+
+                                    Button(action: { showingAPIKey.toggle() }) {
+                                        Image(systemName: showingAPIKey ? "eye.slash.fill" : "eye.fill")
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+
+                                Text(
+                                    "Get your API key from [openrouter.ai](https://openrouter.ai/keys)"
+                                )
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            }
+                            .padding(8)
+                        }
+                    } else {
+                        GroupBox(label: Label("GitHub Token", systemImage: "key.fill")) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    if showingAPIKey {
+                                        TextField("ghp_...", text: $githubToken)
+                                            .textFieldStyle(.roundedBorder)
+                                    } else {
+                                        SecureField("ghp_...", text: $githubToken)
+                                            .textFieldStyle(.roundedBorder)
+                                    }
+
+                                    Button(action: { showingAPIKey.toggle() }) {
+                                        Image(systemName: showingAPIKey ? "eye.slash.fill" : "eye.fill")
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+
+                                Text(
+                                    "Get a token with 'models:read' scope from [github.com/settings/tokens](https://github.com/settings/tokens)"
+                                )
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            }
+                            .padding(8)
+                        }
                     }
 
                     // Model Selection
@@ -199,7 +246,9 @@ struct SettingsView: View {
 
     private func loadSettings() {
         let settings = SettingsManager.shared
-        apiKey = settings.openRouterAPIKey ?? ""
+        selectedProvider = settings.selectedProvider
+        openRouterAPIKey = settings.openRouterAPIKey ?? ""
+        githubToken = settings.githubToken ?? ""
 
         let currentModel = settings.selectedModel
         selectedModel = currentModel
@@ -214,13 +263,16 @@ struct SettingsView: View {
 
         Task {
             do {
-                guard let url = URL(string: "https://openrouter.ai/api/v1/models") else { return }
+                let models: [OpenRouterModel]
 
-                let (data, _) = try await URLSession.shared.data(from: url)
-                let response = try JSONDecoder().decode(ModelsResponse.self, from: data)
+                if selectedProvider == .openRouter {
+                    models = try await loadOpenRouterModels()
+                } else {
+                    models = try await loadGitHubModels()
+                }
 
                 await MainActor.run {
-                    availableModels = response.data.sorted { $0.id < $1.id }
+                    availableModels = models.sorted { $0.id < $1.id }
                     isLoadingModels = false
 
                     // If current model is in list, select it
@@ -242,9 +294,46 @@ struct SettingsView: View {
         }
     }
 
+    private func loadOpenRouterModels() async throws -> [OpenRouterModel] {
+        guard let url = URL(string: "https://openrouter.ai/api/v1/models") else {
+            throw URLError(.badURL)
+        }
+
+        let (data, _) = try await URLSession.shared.data(from: url)
+        let response = try JSONDecoder().decode(ModelsResponse.self, from: data)
+        return response.data
+    }
+
+    private func loadGitHubModels() async throws -> [OpenRouterModel] {
+        guard let url = URL(string: "https://models.github.ai/inference/models") else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        // Add auth if available
+        if !githubToken.isEmpty {
+            request.setValue("Bearer \(githubToken)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+
+        // GitHub Models returns array directly or in a data wrapper
+        if let response = try? JSONDecoder().decode(ModelsResponse.self, from: data) {
+            return response.data
+        } else if let models = try? JSONDecoder().decode([OpenRouterModel].self, from: data) {
+            return models
+        }
+
+        throw URLError(.cannotParseResponse)
+    }
+
     private func saveSettings() {
         let settings = SettingsManager.shared
-        settings.openRouterAPIKey = apiKey.isEmpty ? nil : apiKey
+        settings.selectedProvider = selectedProvider
+        settings.openRouterAPIKey = openRouterAPIKey.isEmpty ? nil : openRouterAPIKey
+        settings.githubToken = githubToken.isEmpty ? nil : githubToken
         settings.selectedModel = useCustomModel ? customModel : selectedModel
         settings.systemPrompt = systemPrompt
         settings.temperature = temperature
